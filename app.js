@@ -63,8 +63,11 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
+
 // 4. Inicialización del Servidor
-// Asegúrate de que tu puerto siga siendo el 3000
-app.listen(3000, '0.0.0.0', () => {
-  console.log('🚀 Servidor abierto a la red local en el puerto 3000');
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Servidor en línea en el puerto ${PORT}`);
+  
+  // ¡Aquí encendemos el motor de notificaciones!
+  startNotificationEngine(); 
 });
