@@ -3,9 +3,8 @@ const { getConnection } = require('../config/db');
 const { Expo } = require('expo-server-sdk');
 
 let expo = new Expo();
-
-// ⚠️ REVISA QUE ESTE SEA TU TOKEN ACTUAL
-const MI_EXPO_TOKEN = "ExponentPushToken[6zXJEqGrHAF5arny-MhLmS3]"; 
+const MI_EXPO_TOKEN = "ExponentPushToken[yGOVVPGz3oFWeysVq4-Xz1]"; 
+// (Nota: Revisa bien si es un 0 (cero) o una O (letra) en tu pantalla, ¡la exactitud aquí es vital!)
 
 const enviarNotificacionExpo = async (titulo, mensaje) => {
     if (!Expo.isExpoPushToken(MI_EXPO_TOKEN)) return;
