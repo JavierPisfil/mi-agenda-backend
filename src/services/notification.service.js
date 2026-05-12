@@ -32,61 +32,55 @@ const enviarNotificacionExpo = async (titulo, mensaje) => {
 };
 
 const startNotificationEngine = () => {
-    console.log('⏰ Motor de notificaciones (PostgreSQL + Expo) inicializado.');
+    console.log('⏰ Motor de notificaciones Inteligente inicializado.');
 
-    // REQUERIMIENTO 1: Un día antes, cada 4 horas (Expresión Cron: 0 */4 * * *)
-    cron.schedule('0 */4 * * *', async () => {
-        try {
-            const pool = await getConnection();
-            // POSTGRESQL: Buscamos tareas donde due_date sea MAÑANA y el estado esté vacío
-            const result = await pool.query(`
-                SELECT id, title FROM Tasks 
-                WHERE estado IS NULL 
-                AND DATE(due_date) = CURRENT_DATE + INTERVAL '1 day'
-            `);
-
-            for (let task of result.rows) {
-                await enviarNotificacionExpo("¡Tarea vence mañana! ⏰", `Recuerda: ${task.title}`);
-            }
-        } catch (error) {
-            console.error('Error en Cron de 4 horas:', error);
-        }
-    });
-
-    // REQUERIMIENTO 2: El mismo día, cada 1 hora (Expresión Cron: 0 * * * *)
-    cron.schedule('0 * * * *', async () => {
-        try {
-            const pool = await getConnection();
-            // POSTGRESQL: Buscamos tareas donde due_date sea HOY
-            const result = await pool.query(`
-                SELECT id, title FROM Tasks 
-                WHERE estado IS NULL 
-                AND DATE(due_date) = CURRENT_DATE
-            `);
-
-            for (let task of result.rows) {
-                await enviarNotificacionExpo("¡URGENTE: Vence HOY! 🚨", `Completar: ${task.title}`);
-            }
-        } catch (error) {
-            console.error('Error en Cron de 1 hora:', error);
-        }
-    });
-
-    // CRON DE PRUEBA: Se ejecuta CADA MINUTO (* * * * *)
+    // Un solo Cron que se ejecuta cada minuto. La inteligencia está en la base de datos.
     cron.schedule('* * * * *', async () => {
-        console.log('🔍 [TEST] El motor revisando tareas pendientes...');
         try {
             const pool = await getConnection();
-            // POSTGRESQL: LIMIT 1 para traer solo una tarea de muestra
-            const result = await pool.query(`
-                SELECT title FROM Tasks WHERE estado IS NULL LIMIT 1
-            `);
             
-            if (result.rows.length > 0) {
-                await enviarNotificacionExpo("🔍 Prueba de Motor", `Pendiente: "${result.rows[0].title}"`);
+            const result = await pool.query(`
+                SELECT id, title, due_date,
+                CASE
+                    WHEN DATE(due_date AT TIME ZONE 'America/Lima') = DATE((NOW() AT TIME ZONE 'America/Lima') + INTERVAL '1 day') THEN '1_dia'
+                    WHEN date_trunc('minute', due_date) = date_trunc('minute', NOW() + INTERVAL '4 hours') THEN '4_horas'
+                    WHEN date_trunc('minute', due_date) = date_trunc('minute', NOW() + INTERVAL '3 hours') THEN '3_horas'
+                    WHEN date_trunc('minute', due_date) = date_trunc('minute', NOW() + INTERVAL '2 hours') THEN '2_horas'
+                    WHEN date_trunc('minute', due_date) = date_trunc('minute', NOW() + INTERVAL '1 hour') THEN '1_hora'
+                END as tipo_alerta
+                FROM Tasks 
+                WHERE estado IS NULL 
+                AND (
+                    -- REGLA 1: Un día antes exactamente a las 8:00 AM (Hora de Lima/Perú)
+                    (
+                        DATE(due_date AT TIME ZONE 'America/Lima') = DATE((NOW() AT TIME ZONE 'America/Lima') + INTERVAL '1 day')
+                        AND EXTRACT(HOUR FROM (NOW() AT TIME ZONE 'America/Lima')) = 8
+                        AND EXTRACT(MINUTE FROM (NOW() AT TIME ZONE 'America/Lima')) = 0
+                    )
+                    OR 
+                    -- REGLA 2: Exactamente a las 4, 3, 2, o 1 horas antes
+                    date_trunc('minute', due_date) = date_trunc('minute', NOW() + INTERVAL '4 hours') OR
+                    date_trunc('minute', due_date) = date_trunc('minute', NOW() + INTERVAL '3 hours') OR
+                    date_trunc('minute', due_date) = date_trunc('minute', NOW() + INTERVAL '2 hours') OR
+                    date_trunc('minute', due_date) = date_trunc('minute', NOW() + INTERVAL '1 hour')
+                )
+            `);
+
+            // Si encontró tareas que cumplen las reglas de tiempo exacto, las notifica
+            for (let task of result.rows) {
+                let titulo_alerta = "";
+                
+                if (task.tipo_alerta === '1_dia') titulo_alerta = "¡Mañana vence tu tarea! 📅";
+                else if (task.tipo_alerta === '4_horas') titulo_alerta = "¡Faltan 4 horas! ⏳";
+                else if (task.tipo_alerta === '3_horas') titulo_alerta = "¡Faltan 3 horas! ⏳";
+                else if (task.tipo_alerta === '2_horas') titulo_alerta = "¡Faltan 2 horas! 🚨";
+                else if (task.tipo_alerta === '1_hora') titulo_alerta = "¡Vence en 1 HORA! 🔥";
+
+                await enviarNotificacionExpo(titulo_alerta, `Pendiente: ${task.title}`);
+                console.log(`✅ Alerta de '${task.tipo_alerta}' enviada para la tarea: ${task.title}`);
             }
         } catch (error) {
-            console.error(error);
+            console.error('❌ Error en el Cron Inteligente:', error);
         }
     });
 };
