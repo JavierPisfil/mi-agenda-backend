@@ -7,22 +7,37 @@ const MI_EXPO_TOKEN = "ExponentPushToken[yGOVVPGz3oFWeysVq4-Xz1]";
 // (Nota: Revisa bien si es un 0 (cero) o una O (letra) en tu pantalla, ¡la exactitud aquí es vital!)
 
 const enviarNotificacionExpo = async (titulo, mensaje) => {
-    if (!Expo.isExpoPushToken(MI_EXPO_TOKEN)) return;
+    if (!Expo.isExpoPushToken(MI_EXPO_TOKEN)) {
+        console.error("❌ El formato del token es inválido.");
+        return;
+    }
 
     const mensajes = [{
         to: MI_EXPO_TOKEN,
         sound: 'default',
         title: titulo,
         body: mensaje,
-        channelId: 'canal-urgente', // <--- ESTA ES LA LLAVE PARA QUE ANDROID SUENE
+        channelId: 'canal-urgente', 
         data: { ruta: 'calendario' },
     }];
 
     try {
-        await expo.sendPushNotificationsAsync(mensajes);
-        console.log("✅ [PUSH] ¡Notificación enviada al celular con ALARMA!");
+        // Expo devuelve un "arreglo de recibos" (tickets)
+        let tickets = await expo.sendPushNotificationsAsync(mensajes);
+        
+        // Vamos a leer el recibo para ver si hubo un error silencioso
+        for (let ticket of tickets) {
+            if (ticket.status === 'error') {
+                console.error("❌ EXPO RECHAZÓ EL MENSAJE. Motivo:", ticket.message);
+                if (ticket.details && ticket.details.error) {
+                    console.error("Detalle del error:", ticket.details.error);
+                }
+            } else {
+                console.log("✅ [PUSH] ¡Notificación entregada con éxito a los servidores de Expo!");
+            }
+        }
     } catch (error) {
-        console.error("❌ Error enviando:", error);
+        console.error("❌ Error de conexión con Expo:", error);
     }
 };
 
