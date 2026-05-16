@@ -15,9 +15,14 @@ app.use(express.json());
 
 // 3. Rutas
 const taskRoutes = require('./src/routes/task.routes');
-app.use('/api', taskRoutes);
+const authRoutes = require('./src/routes/auth.routes'); 
+
+// Usamos las rutas
+app.use('/api', taskRoutes);         // Para las tareas: /api/tasks
+app.use('/api/auth', authRoutes);    // Para el login/registro: /api/auth/login y /api/auth/register
 
 // RUTA PARA ACTUALIZAR EL ESTADO (CALIFICAR TAREA)
+// Nota: Más adelante podemos mover esto a task.routes para mantener este archivo súper limpio
 app.put('/api/tasks/:id/status', async (req, res) => {
   const { id } = req.params;
   const { estado } = req.body;
@@ -34,35 +39,6 @@ app.put('/api/tasks/:id/status', async (req, res) => {
     res.status(500).send("Hubo un error en el servidor al calificar la tarea.");
   }
 });
-
-// ==========================================
-// RUTA DE SEGURIDAD: SISTEMA DE LOGIN
-// ==========================================
-app.post('/api/login', async (req, res) => {
-  const { email, password } = req.body;
-  
-  try {
-    const pool = await getConnection(); 
-    
-    // Buscamos si existe un registro que coincida exactamente con el email y el password
-    const result = await pool.query(
-      'SELECT id, email FROM Usuarios WHERE email = $1 AND password = $2', 
-      [email, password]
-    );
-      
-    // Si la consulta encontró a alguien, el login es exitoso
-    if (result.rows.length > 0) {
-      res.json({ success: true, message: '¡Bienvenido!', user: result.rows[0] });
-    } else {
-      // Si no encontró a nadie, devolvemos un error 401 (No autorizado)
-      res.status(401).json({ success: false, message: 'Correo o contraseña incorrectos' });
-    }
-  } catch (err) {
-    console.error("Error en el login:", err);
-    res.status(500).send("Hubo un error en el servidor al intentar iniciar sesión.");
-  }
-});
-
 
 // 4. Inicialización del Servidor
 app.listen(PORT, '0.0.0.0', () => {

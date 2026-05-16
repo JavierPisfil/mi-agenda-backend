@@ -3,17 +3,16 @@ const { getConnection } = require('../config/db');
 const { Expo } = require('expo-server-sdk');
 
 let expo = new Expo();
-const MI_EXPO_TOKEN = "ExponentPushToken[O2vKcqF1cEQyLToVjn-2b3]"; 
-// (Nota: Revisa bien si es un 0 (cero) o una O (letra) en tu pantalla, ¡la exactitud aquí es vital!)
 
-const enviarNotificacionExpo = async (titulo, mensaje) => {
-    if (!Expo.isExpoPushToken(MI_EXPO_TOKEN)) {
-        console.error("❌ El formato del token es inválido.");
+// 🚀 Ya no hay token duro (hardcodeado). Ahora lo recibimos como parámetro.
+const enviarNotificacionExpo = async (tokenDestino, titulo, mensaje) => {
+    if (!Expo.isExpoPushToken(tokenDestino)) {
+        console.error(`❌ El formato del token ${tokenDestino} es inválido.`);
         return;
     }
 
     const mensajes = [{
-        to: MI_EXPO_TOKEN,
+        to: tokenDestino,
         sound: 'default',
         title: titulo,
         body: mensaje,
@@ -22,10 +21,8 @@ const enviarNotificacionExpo = async (titulo, mensaje) => {
     }];
 
     try {
-        // Expo devuelve un "arreglo de recibos" (tickets)
         let tickets = await expo.sendPushNotificationsAsync(mensajes);
         
-        // Vamos a leer el recibo para ver si hubo un error silencioso
         for (let ticket of tickets) {
             if (ticket.status === 'error') {
                 console.error("❌ EXPO RECHAZÓ EL MENSAJE. Motivo:", ticket.message);
@@ -33,7 +30,7 @@ const enviarNotificacionExpo = async (titulo, mensaje) => {
                     console.error("Detalle del error:", ticket.details.error);
                 }
             } else {
-                console.log("✅ [PUSH] ¡Notificación entregada con éxito a los servidores de Expo!");
+                console.log(`✅ [PUSH] ¡Notificación entregada al token ${tokenDestino.substring(0,10)}...!`);
             }
         }
     } catch (error) {
@@ -42,36 +39,37 @@ const enviarNotificacionExpo = async (titulo, mensaje) => {
 };
 
 const startNotificationEngine = () => {
-    console.log('⏰ Motor de notificaciones Inteligente inicializado.');
+    console.log('⏰ Motor de notificaciones Inteligente inicializado (Modo Multiusuario).');
 
     cron.schedule('* * * * *', async () => {
-        // 🫀 LATIDO: Esto imprimirá la hora de Perú cada minuto para que sepas que está vivo
         const horaPeru = new Date().toLocaleString("es-PE", { timeZone: "America/Lima" });
-        console.log(`⏱️ [${horaPeru}] Buscando tareas pendientes...`);
+        console.log(`⏱️ [${horaPeru}] Buscando tareas pendientes de todos los usuarios...`);
 
         try {
             const pool = await getConnection();
             
-            // 🧠 LÓGICA FORZADA A HORA PERUANA (America/Lima)
+            // 🧠 LÓGICA DINÁMICA: Unimos Tasks (t) con Usuarios (u)
             const result = await pool.query(`
-                SELECT id, title, due_date,
+                SELECT t.id, t.title, t.due_date, u.expo_token,
                 CASE
-                    WHEN date_trunc('minute', due_date AT TIME ZONE 'America/Lima') = date_trunc('minute', NOW() AT TIME ZONE 'America/Lima') THEN 'vence_ahora'
-                    WHEN date_trunc('minute', due_date AT TIME ZONE 'America/Lima') = date_trunc('minute', (NOW() AT TIME ZONE 'America/Lima') + INTERVAL '1 hour') THEN '1_hora'
-                    WHEN date_trunc('minute', due_date AT TIME ZONE 'America/Lima') = date_trunc('minute', (NOW() AT TIME ZONE 'America/Lima') + INTERVAL '2 hours') THEN '2_horas'
-                    WHEN date_trunc('minute', due_date AT TIME ZONE 'America/Lima') = date_trunc('minute', (NOW() AT TIME ZONE 'America/Lima') + INTERVAL '3 hours') THEN '3_horas'
-                    WHEN date_trunc('minute', due_date AT TIME ZONE 'America/Lima') = date_trunc('minute', (NOW() AT TIME ZONE 'America/Lima') + INTERVAL '4 hours') THEN '4_horas'
-                    WHEN DATE(due_date AT TIME ZONE 'America/Lima') = DATE((NOW() AT TIME ZONE 'America/Lima') + INTERVAL '1 day') THEN '1_dia'
+                    WHEN date_trunc('minute', t.due_date AT TIME ZONE 'America/Lima') = date_trunc('minute', NOW() AT TIME ZONE 'America/Lima') THEN 'vence_ahora'
+                    WHEN date_trunc('minute', t.due_date AT TIME ZONE 'America/Lima') = date_trunc('minute', (NOW() AT TIME ZONE 'America/Lima') + INTERVAL '1 hour') THEN '1_hora'
+                    WHEN date_trunc('minute', t.due_date AT TIME ZONE 'America/Lima') = date_trunc('minute', (NOW() AT TIME ZONE 'America/Lima') + INTERVAL '2 hours') THEN '2_horas'
+                    WHEN date_trunc('minute', t.due_date AT TIME ZONE 'America/Lima') = date_trunc('minute', (NOW() AT TIME ZONE 'America/Lima') + INTERVAL '3 hours') THEN '3_horas'
+                    WHEN date_trunc('minute', t.due_date AT TIME ZONE 'America/Lima') = date_trunc('minute', (NOW() AT TIME ZONE 'America/Lima') + INTERVAL '4 hours') THEN '4_horas'
+                    WHEN DATE(t.due_date AT TIME ZONE 'America/Lima') = DATE((NOW() AT TIME ZONE 'America/Lima') + INTERVAL '1 day') THEN '1_dia'
                 END as tipo_alerta
-                FROM Tasks 
-                WHERE estado IS NULL 
+                FROM Tasks t
+                JOIN Usuarios u ON t.usuario_id = u.id
+                WHERE t.estado IS NULL 
+                AND u.expo_token IS NOT NULL
                 AND (
-                    date_trunc('minute', due_date AT TIME ZONE 'America/Lima') = date_trunc('minute', NOW() AT TIME ZONE 'America/Lima') OR
-                    date_trunc('minute', due_date AT TIME ZONE 'America/Lima') = date_trunc('minute', (NOW() AT TIME ZONE 'America/Lima') + INTERVAL '1 hour') OR
-                    date_trunc('minute', due_date AT TIME ZONE 'America/Lima') = date_trunc('minute', (NOW() AT TIME ZONE 'America/Lima') + INTERVAL '2 hours') OR
-                    date_trunc('minute', due_date AT TIME ZONE 'America/Lima') = date_trunc('minute', (NOW() AT TIME ZONE 'America/Lima') + INTERVAL '3 hours') OR
-                    date_trunc('minute', due_date AT TIME ZONE 'America/Lima') = date_trunc('minute', (NOW() AT TIME ZONE 'America/Lima') + INTERVAL '4 hours') OR
-                    (DATE(due_date AT TIME ZONE 'America/Lima') = DATE((NOW() AT TIME ZONE 'America/Lima') + INTERVAL '1 day') AND EXTRACT(HOUR FROM (NOW() AT TIME ZONE 'America/Lima')) = 8 AND EXTRACT(MINUTE FROM (NOW() AT TIME ZONE 'America/Lima')) = 0)
+                    date_trunc('minute', t.due_date AT TIME ZONE 'America/Lima') = date_trunc('minute', NOW() AT TIME ZONE 'America/Lima') OR
+                    date_trunc('minute', t.due_date AT TIME ZONE 'America/Lima') = date_trunc('minute', (NOW() AT TIME ZONE 'America/Lima') + INTERVAL '1 hour') OR
+                    date_trunc('minute', t.due_date AT TIME ZONE 'America/Lima') = date_trunc('minute', (NOW() AT TIME ZONE 'America/Lima') + INTERVAL '2 hours') OR
+                    date_trunc('minute', t.due_date AT TIME ZONE 'America/Lima') = date_trunc('minute', (NOW() AT TIME ZONE 'America/Lima') + INTERVAL '3 hours') OR
+                    date_trunc('minute', t.due_date AT TIME ZONE 'America/Lima') = date_trunc('minute', (NOW() AT TIME ZONE 'America/Lima') + INTERVAL '4 hours') OR
+                    (DATE(t.due_date AT TIME ZONE 'America/Lima') = DATE((NOW() AT TIME ZONE 'America/Lima') + INTERVAL '1 day') AND EXTRACT(HOUR FROM (NOW() AT TIME ZONE 'America/Lima')) = 8 AND EXTRACT(MINUTE FROM (NOW() AT TIME ZONE 'America/Lima')) = 0)
                 )
             `);
 
@@ -84,7 +82,8 @@ const startNotificationEngine = () => {
                 else if (task.tipo_alerta === '4_horas') titulo_alerta = "¡Faltan 4 horas! ⏳";
                 else if (task.tipo_alerta === '1_dia') titulo_alerta = "¡Mañana vence tu tarea! 📅";
 
-                await enviarNotificacionExpo(titulo_alerta, `Pendiente: ${task.title}`);
+                // 🚀 Enviamos la notificación usando el token extraído de la base de datos
+                await enviarNotificacionExpo(task.expo_token, titulo_alerta, `Pendiente: ${task.title}`);
             }
         } catch (error) {
             console.error('❌ Error en el Cron:', error);
